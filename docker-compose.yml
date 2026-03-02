@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  client-portal:
+    build:
+      context: ./my-app
+      dockerfile: Dockerfile
+    container_name: client-portal-template
+    ports:
+      - "3460:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    restart: unless-stopped
+    networks:
+      - m4rq-network
+
+networks:
+  m4rq-network:
+    external: true
+    name: infrastructure_default
