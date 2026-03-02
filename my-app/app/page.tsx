@@ -86,7 +86,7 @@ export default function DashboardPage() {
           type: submissionModal.type,
           title: data.title,
           description: data.description,
-          clientName: clientProfile?.name || 'Client',
+          clientName: (clientProfile as any)?.name || 'Client',
         }),
       });
       
@@ -132,8 +132,8 @@ export default function DashboardPage() {
       <Header 
         mobileMenuOpen={mobileMenuOpen} 
         onToggleMobile={() => setMobileMenuOpen(!mobileMenuOpen)}
-        companyName={clientProfile?.company_name || 'Company'}
-        clientName={`${clientProfile?.name || 'Client'} - Client Portal`}
+        companyName={(clientProfile as any)?.company_name || 'Company'}
+        clientName={`${(clientProfile as any)?.name || 'Client'} - Client Portal`}
       />
 
       <div className="flex flex-1 relative overflow-hidden">
@@ -142,8 +142,8 @@ export default function DashboardPage() {
           onTabChange={setActiveTab}
           mobileMenuOpen={mobileMenuOpen}
           onCloseMobile={() => setMobileMenuOpen(false)}
-          companyName={clientProfile?.company_name || 'Company'}
-          clientName={clientProfile?.name || 'Client'}
+          companyName={(clientProfile as any)?.company_name || 'Company'}
+          clientName={(clientProfile as any)?.name || 'Client'}
         />
 
         <main className="flex-1 p-4 lg:p-6 overflow-auto w-full">

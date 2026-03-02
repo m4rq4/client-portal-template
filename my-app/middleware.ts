@@ -10,8 +10,7 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = pathname === '/login';
 
   // Create Supabase client
-  const cookieStore = request.cookies;
-  const supabase = createClient();
+  const supabase = await createClient();
   
   // Get session
   const { data: { session } } = await supabase.auth.getSession();

@@ -74,7 +74,7 @@ export function useProject(projectId: string) {
       
       if (tasksError) throw tasksError;
       
-      return { ...project, tasks } as Project;
+      return { ...(project as any), tasks } as Project;
     },
     enabled: !!projectId,
   });
@@ -109,7 +109,7 @@ export function useCreateSubmission() {
       
       const { data, error } = await supabase
         .from('submissions')
-        .insert([{ ...submission, client_id: user.id }])
+        .insert([{ ...submission, client_id: user.id }] as any)
         .select()
         .single();
       
