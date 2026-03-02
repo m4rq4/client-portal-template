@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, FileText, TrendingUp, Clock, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Plus, FileText, TrendingUp, Clock, BarChart3, Loader2 } from 'lucide-react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { MobileNav } from '@/components/layout/MobileNav';
@@ -13,118 +13,86 @@ import { CampaignHealth } from '@/components/dashboard/CampaignHealth';
 import { SubmissionModal } from '@/components/forms/SubmissionModal';
 import { Button } from '@/components/ui/button';
 import { Project, MetaAdsData } from '@/lib/types';
-
-// Mock data - replace with Supabase fetch
-const mockProjects: Project[] = [
-  {
-    id: '1',
-    name: 'Meta Ads - Katy Leads',
-    description: 'Lead generation campaign targeting Katy homeowners looking to sell for cash',
-    status: 'active',
-    createdDate: '2026-02-24',
-    lastUpdate: '2 mins ago',
-    leads: 0,
-    spend: 5.13,
-    ctr: 7.46,
-    campaignName: 'Katy Leads',
-    tasks: [
-      { id: 't1', title: 'Install Meta Pixel on landing page', status: 'completed', completedDate: '2026-02-24' },
-      { id: 't2', title: 'Configure ad targeting for Houston area', status: 'completed', completedDate: '2026-02-24' },
-      { id: 't3', title: 'Optimize ad creative for cash buyer angle', status: 'in-progress' },
-      { id: 't4', title: 'Set up automated lead notifications', status: 'scheduled' },
-    ],
-    systems: [
-      { name: 'Meta Campaign Tracker', status: 'active', description: 'Automated daily reporting on ad performance' },
-      { name: 'Lead Alert System', status: 'pending', description: 'Instant SMS/email when new leads come in' },
-    ]
-  }
-];
+import { 
+  useProjects, 
+  useProject, 
+  useCreateSubmission, 
+  useMetaAdsData,
+  useClientProfile,
+  subscribeToProjects,
+  subscribeToTasks
+} from '@/lib/hooks/useSupabase';
+import { createClient } from '@/lib/supabase/client';
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'reports'>('overview');
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [submissionModal, setSubmissionModal] = useState<{ isOpen: boolean; type: 'project' | 'task' | 'system' | 'report' }>({ isOpen: false, type: 'project' });
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>(mockProjects);
-  const [metaData, setMetaData] = useState<MetaAdsData>({
-    leads: 0,
-    spend: '5.13',
-    impressions: 67,
-    clicks: 5,
-    ctr: '7.46',
-    cpm: '0',
-    campaignName: 'Katy Leads',
-    lastUpdated: new Date().toLocaleTimeString()
-  });
+  
+  const supabase = createClient();
+  
+  // Fetch data
+  const { data: clientProfile } = useClientProfile();
+  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: selectedProject, isLoading: projectLoading } = useProject(selectedProjectId || '');
+  const { data: metaData, isLoading: metaLoading } = useMetaAdsData(selectedProjectId || undefined);
+  const createSubmission = useCreateSubmission();
 
-  // Fetch Meta Ads data
+  // Subscribe to realtime updates
   useEffect(() => {
-    const fetchMetaData = async () => {
-      try {
-        const response = await fetch('/api/meta-ads');
-        if (response.ok) {
-          const data = await response.json();
-          setMetaData({
-            ...data,
-            lastUpdated: new Date().toLocaleTimeString()
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch Meta data:', error);
-      }
+    const subscription = subscribeToProjects(() => {
+      // Projects will auto-refetch due to React Query
+    });
+    return () => {
+      subscription.unsubscribe();
     };
-
-    fetchMetaData();
-    const interval = setInterval(fetchMetaData, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
   }, []);
 
-  const handleProjectClick = (project: Project) => {
-    setSelectedProject(project);
+  useEffect(() => {
+    if (selectedProjectId) {
+      const subscription = subscribeToTasks(selectedProjectId, () => {
+        // Tasks will auto-refetch
+      });
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [selectedProjectId]);
+
+  const handleProjectClick = (projectId: string) => {
+    setSelectedProjectId(projectId);
     setMobileMenuOpen(false);
   };
 
   const handleBack = () => {
-    setSelectedProject(null);
+    setSelectedProjectId(null);
   };
 
   const handleSubmission = async (data: { title: string; description: string }) => {
     try {
-      const response = await fetch('/api/submissions', {
+      await createSubmission.mutateAsync({
+        type: submissionModal.type,
+        title: data.title,
+        description: data.description,
+      });
+      
+      // Send iMessage notification
+      await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: submissionModal.type,
           title: data.title,
           description: data.description,
-          clientName: 'Joshua Guidry'
-        })
+          clientName: clientProfile?.name || 'Client',
+        }),
       });
-
-      if (response.ok) {
-        // If it's a project, add to local state
-        if (submissionModal.type === 'project') {
-          const newProject: Project = {
-            id: Date.now().toString(),
-            name: data.title,
-            description: data.description || 'New project submitted - awaiting setup',
-            status: 'scheduled',
-            createdDate: new Date().toISOString().split('T')[0],
-            lastUpdate: 'Just now',
-            leads: 0,
-            spend: 0,
-            ctr: 0,
-            tasks: [],
-            systems: []
-          };
-          setProjects(prev => [...prev, newProject]);
-        }
-        alert('Submitted successfully! You\'ll be notified when it\'s done.');
-      }
+      
+      setSubmissionModal({ ...submissionModal, isOpen: false });
     } catch (error) {
       console.error('Submission error:', error);
-      alert('Submission saved. We\'ll process it shortly.');
     }
   };
 
@@ -132,15 +100,40 @@ export default function DashboardPage() {
     setSubmissionModal({ isOpen: true, type });
   };
 
-  const activeProject = projects[0];
+  // Transform Supabase project to our Project type
+  const transformProject = (p: any): Project => ({
+    id: p.id,
+    name: p.name,
+    description: p.description || '',
+    status: p.status,
+    createdDate: p.created_at,
+    lastUpdate: p.updated_at,
+    leads: 0, // Will come from metrics
+    spend: 0,
+    ctr: 0,
+    campaignName: p.campaign_name || undefined,
+    tasks: selectedProject?.tasks || [],
+    systems: [],
+  });
+
+  const transformedProjects = projects.map(transformProject);
+  const activeProject = transformedProjects[0];
+
+  if (projectsLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
       <Header 
         mobileMenuOpen={mobileMenuOpen} 
         onToggleMobile={() => setMobileMenuOpen(!mobileMenuOpen)}
-        companyName="Cash For Homes"
-        clientName="Joshua Guidry - Client Portal"
+        companyName={clientProfile?.company_name || 'Company'}
+        clientName={`${clientProfile?.name || 'Client'} - Client Portal`}
       />
 
       <div className="flex flex-1 relative overflow-hidden">
@@ -149,31 +142,32 @@ export default function DashboardPage() {
           onTabChange={setActiveTab}
           mobileMenuOpen={mobileMenuOpen}
           onCloseMobile={() => setMobileMenuOpen(false)}
-          companyName="Cash For Homes"
-          clientName="Joshua Guidry"
+          companyName={clientProfile?.company_name || 'Company'}
+          clientName={clientProfile?.name || 'Client'}
         />
 
         <main className="flex-1 p-4 lg:p-6 overflow-auto w-full">
-          {selectedProject ? (
+          {selectedProjectId && selectedProject ? (
             <ProjectDetail 
-              project={selectedProject} 
-              metaData={metaData}
+              project={transformProject(selectedProject)}
+              metaData={metaData || { leads: 0, spend: '0', impressions: 0, clicks: 0, ctr: '0', cpm: '0', campaignName: '', lastUpdated: '' }}
               onBack={handleBack}
               onSubmitTask={() => openSubmission('task')}
               onMetricClick={setSelectedMetric}
+              isLoading={projectLoading || metaLoading}
             />
           ) : (
             <>
               {activeTab === 'overview' && (
                 <OverviewTab 
-                  projects={projects} 
-                  metaData={metaData}
+                  projects={transformedProjects} 
+                  metaData={metaData || { leads: 0, spend: '0', impressions: 0, clicks: 0, ctr: '0', cpm: '0', campaignName: '', lastUpdated: '' }}
                   onSubmitProject={() => openSubmission('project')}
                 />
               )}
               {activeTab === 'projects' && (
                 <ProjectsTab 
-                  projects={projects} 
+                  projects={transformedProjects} 
                   onProjectClick={handleProjectClick}
                   onSubmitProject={() => openSubmission('project')}
                 />
@@ -195,7 +189,7 @@ export default function DashboardPage() {
         onSubmit={handleSubmission}
       />
 
-      {selectedMetric && (
+      {selectedMetric && metaData && (
         <MetricAnalysis
           metric={selectedMetric}
           data={metaData}
@@ -306,7 +300,7 @@ function ProjectsTab({
   onSubmitProject 
 }: { 
   projects: Project[]; 
-  onProjectClick: (p: Project) => void;
+  onProjectClick: (id: string) => void;
   onSubmitProject: () => void;
 }) {
   return (
@@ -324,7 +318,7 @@ function ProjectsTab({
           <ProjectCard 
             key={project.id} 
             project={project} 
-            onClick={() => onProjectClick(project)} 
+            onClick={() => onProjectClick(project.id)} 
           />
         ))}
       </div>
@@ -361,15 +355,25 @@ function ProjectDetail({
   metaData,
   onBack, 
   onSubmitTask,
-  onMetricClick 
+  onMetricClick,
+  isLoading
 }: { 
   project: Project; 
   metaData: MetaAdsData;
   onBack: () => void;
   onSubmitTask: () => void;
   onMetricClick: (metric: string) => void;
+  isLoading: boolean;
 }) {
   const cpc = (parseFloat(metaData.spend) / (metaData.clicks || 1)).toFixed(2);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 pb-20 lg:pb-0">
